@@ -1,0 +1,2 @@
+minimumReleaseAgeExclude:
+  - pm2@7.1.0

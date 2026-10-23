@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Task Manager - Node.js Autoscaler (0 to 10 Instances)</title>
+  <style>
+    :root {
+      --bg-main: #0b0f19;
+      --bg-card: #131b2e;
+      --bg-card-hover: #1a243d;
+      --border: #232f4e;
+      --border-accent: #00ff66;
+      --text-main: #f0f6fc;
+      --text-dim: #8ba2c4;
+      --neon-green: #00ff66;
+      --neon-green-glow: rgba(0, 255, 102, 0.35);
+      --neon-cyan: #00d8ff;
+      --neon-yellow: #ffb700;
+      --neon-red: #ff3366;
+      --accent-blue: #2563eb;
+      --graph-grid: rgba(0, 255, 102, 0.12);
+      --graph-bg: #071109;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    }
+
+    html, body {
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      height: 100vh;
+      max-height: 100vh;
+      width: 100vw;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: #1e293b #060910;
+    }
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #060910;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334155;
+    }
+
+    /* Windows Task Manager Top Window Header */
+    header {
+      background: #0f172a;
+      border-bottom: 1px solid var(--border);
+      padding: 6px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+      flex-shrink: 0;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .tm-icon {
+      width: 26px;
+      height: 26px;
+      background: linear-gradient(135deg, #0078d4, #00d8ff);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 13px;
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(0, 216, 255, 0.3);
+    }
+
+    h1 {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .badge-tab {
+      background: #1e293b;
+      color: var(--neon-cyan);
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid #334155;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      background: rgba(0, 255, 102, 0.08);
+      border: 1px solid rgba(0, 255, 102, 0.3);
+      padding: 4px 10px;
+      border-radius: 20px;
+      color: var(--neon-green);
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background-color: var(--neon-green);
+      box-shadow: 0 0 8px var(--neon-green);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.85); }
+    }
+
+    /* System Telemetry Bar */
+    .telemetry-bar {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+      padding: 8px 18px;
+      background: #0d1424;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .metric-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 10px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+
+    .metric-card:hover {
+      border-color: #3b82f6;
+    }
+
+    .metric-card .label {
+      font-size: 9.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-dim);
+      margin-bottom: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .metric-card .value {
+      font-size: 18px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      line-height: 1.2;
+    }
+
+    .metric-card .subtext {
+      font-size: 9.5px;
+      color: var(--text-dim);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .val-green { color: var(--neon-green); }
+    .val-yellow { color: var(--neon-yellow); }
+    .val-red { color: var(--neon-red); }
+    .val-cyan { color: var(--neon-cyan); }
+
+    /* Control Deck */
+    .controls-panel {
+      padding: 6px 18px;
+      background: #0f172a;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .button-group-title {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-dim);
+      margin-bottom: 3px;
+    }
+
+    .flood-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    button.btn {
+      cursor: pointer;
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 5px 11px;
+      border-radius: 4px;
+      border: 1px solid transparent;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s ease-in-out;
+      user-select: none;
+    }
+
+    .btn:active {
+      transform: scale(0.96);
+    }
+
+    .btn-panic {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      color: #fff;
+      box-shadow: 0 2px 10px rgba(239, 68, 68, 0.4);
+    }
+    .btn-panic:hover {
+      background: linear-gradient(135deg, #f87171, #ef4444);
+      box-shadow: 0 4px 15px rgba(239, 68, 68, 0.6);
+    }
+
+    .btn-flood {
+      background: #1e293b;
+      color: var(--text-main);
+      border-color: #334155;
+    }
+    .btn-flood:hover {
+      background: #334155;
+      border-color: #64748b;
+      color: #fff;
+    }
+
+    .btn-mega {
+      background: linear-gradient(135deg, #8b5cf6, #6366f1);
+      color: #fff;
+      box-shadow: 0 2px 10px rgba(139, 92, 246, 0.4);
+    }
+    .btn-mega:hover {
+      box-shadow: 0 4px 16px rgba(139, 92, 246, 0.7);
+    }
+
+    .btn-danger {
+      background: #271418;
+      color: #ff6b81;
+      border-color: #5c1d27;
+    }
+    .btn-danger:hover {
+      background: #411921;
+    }
+
+    /* Duration & Traffic Config Controls */
+    .traffic-config {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--bg-card);
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+
+    .config-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .config-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+
+    .config-input {
+      background: #090d16;
+      border: 1px solid #2a3756;
+      color: var(--text-main);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11.5px;
+      width: 62px;
+      font-weight: bold;
+    }
+
+    .toggle-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+
+    .toggle-checkbox {
+      accent-color: var(--neon-green);
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
+    }
+
+    /* MAIN TASK MANAGER CPU GRID (11 Cores Split Layout) */
+    main.dashboard-split {
+      flex: 1;
+      min-height: 0;
+      padding: 8px 18px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr);
+      gap: 14px;
+      align-items: stretch;
+      overflow: hidden;
+    }
+
+    .left-section {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+      min-height: 0;
+      height: 100%;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-right: 4px;
+    }
+
+    .right-section {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      height: 100%;
+    }
+
+    .grid-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 2px;
+      flex-shrink: 0;
+    }
+
+    .grid-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .thread-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 8px;
+    }
+
+    @media (max-width: 1100px) {
+      main.dashboard-split {
+        grid-template-columns: 1fr;
+        overflow-y: auto;
+      }
+      .right-section {
+        position: static;
+        min-height: 300px;
+      }
+    }
+
+    /* Individual Core Box (Task Manager Style) */
+    .core-box {
+      background: var(--graph-bg);
+      border: 1px solid #1c2b1f;
+      border-radius: 6px;
+      padding: 6px 8px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      height: 128px;
+      box-shadow: inset 0 0 16px rgba(0, 0, 0, 0.8);
+      transition: all 0.2s ease;
+    }
+
+    .core-box.active {
+      border-color: var(--neon-green);
+      box-shadow: 0 0 14px var(--neon-green-glow), inset 0 0 16px rgba(0, 255, 102, 0.08);
+    }
+
+    .core-box.offline {
+      border-color: #1e293b;
+      background: #090e18;
+      box-shadow: none;
+      opacity: 0.65;
+    }
+
+    .core-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 3px;
+      z-index: 2;
+    }
+
+    .core-name {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .core-box.active .core-name {
+      color: var(--neon-green);
+    }
+    .core-box.offline .core-name {
+      color: #64748b;
+    }
+
+    .core-pid {
+      font-size: 9px;
+      font-family: monospace;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: #111a2e;
+      color: var(--neon-cyan);
+      border: 1px solid #1e293b;
+    }
+
+    .core-box.offline .core-pid {
+      background: #101622;
+      color: #475569;
+      border-color: transparent;
+    }
+
+    /* Canvas Graph */
+    .graph-wrap {
+      flex: 1;
+      position: relative;
+      border: 1px solid rgba(0, 255, 102, 0.2);
+      border-radius: 4px;
+      overflow: hidden;
+      background: #040905;
+      margin-bottom: 4px;
+      min-height: 42px;
+    }
+
+    .core-box.offline .graph-wrap {
+      border-color: #1a2233;
+      background: #060a12;
+    }
+
+    canvas.core-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .core-footer {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      z-index: 2;
+    }
+
+    .task-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      font-family: monospace;
+      color: var(--text-dim);
+    }
+
+    .task-meta .highlight {
+      color: #fff;
+      font-weight: 600;
+    }
+
+    /* Live Progress Bar for synchronous lock */
+    .progress-track {
+      width: 100%;
+      height: 3px;
+      background: #17243c;
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 1px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #00d8ff, var(--neon-green));
+      box-shadow: 0 0 8px var(--neon-green);
+      transition: width 0.08s linear;
+    }
+
+    .core-box.offline .progress-fill {
+      width: 0% !important;
+      background: transparent;
+    }
+
+    /* Live Log Stream Terminal (Vertical Right Side) */
+    .logs-panel {
+      background: #090d16;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      height: 100%;
+      min-height: 0;
+      flex: 1;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    .logs-header {
+      padding: 8px 14px;
+      background: #0e1524;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    .log-stream {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 10px 14px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 11px;
+      line-height: 1.5;
+      background: #060910;
+      color: #cbd5e1;
+    }
+
+    .log-line {
+      display: flex;
+      gap: 12px;
+    }
+
+    .log-time { color: #64748b; }
+    .log-scale-up { color: var(--neon-green); font-weight: bold; }
+    .log-scale-down { color: var(--neon-yellow); font-weight: bold; }
+    .log-freeze { color: #ffb700; }
+    .log-commit { color: var(--neon-cyan); }
+    .log-flood { color: var(--neon-red); font-weight: bold; }
+  </style>
+</head>
+<body>
+
+  <!-- Window Header -->
+  <header>
+    <div class="header-left">
+      <div class="tm-icon">⚡</div>
+      <h1>Task Manager <span class="badge-tab">Performance &gt; 11-Core System (1 Async Manager + 10 Sync Workers)</span></h1>
+    </div>
+    <div class="header-right">
+      <div id="scale-badge" class="status-pill">
+        <div class="status-dot"></div>
+        <span id="scale-text">0 / 10 ACTIVE (SCALED TO 0)</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- KPI Telemetry Bar -->
+  <div class="telemetry-bar">
+    <div class="metric-card">
+      <div class="label">RabbitMQ Queue Depth (Waiting)</div>
+      <div class="value val-red" id="metric-lag">0</div>
+      <div class="subtext">AMQP 'my-tasks' queue backlog</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="label">Active PM2/Fork Instances</div>
+      <div class="value val-green" id="metric-active">0 / 10</div>
+      <div class="subtext" id="metric-capacity">0% capacity utilized</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="label">Total Processed</div>
+      <div class="value val-cyan" id="metric-processed">0</div>
+      <div class="subtext">Completed synchronous jobs</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="label">Processing Throughput</div>
+      <div class="value val-yellow" id="metric-throughput">0.0 <span style="font-size: 13px; color: var(--text-dim);">jobs/s</span></div>
+      <div class="subtext">Real-time concurrency speed</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="label">Avg Job Freeze Duration</div>
+      <div class="value" id="metric-duration">3,000 <span style="font-size: 13px; color: var(--text-dim);">ms</span></div>
+      <div class="subtext">Pure synchronous block / job</div>
+    </div>
+  </div>
+
+  <!-- Interactive Controls Deck (Load Injections) -->
+  <div class="controls-panel">
+    <div>
+      <div class="button-group-title">Parallel HTTP Requests Flood (Each with individual ?t= timer)</div>
+      <div class="flood-buttons">
+        <button class="btn btn-flood" onclick="fireParallelRequests(10)">+10 Parallel Requests</button>
+        <button class="btn btn-panic" onclick="fireParallelRequests(50)">⚡ Fire 50 Separate Requests</button>
+        <button class="btn btn-flood" onclick="fireParallelRequests(100)">🔥 Fire 100 Separate Requests</button>
+        <button class="btn btn-mega" onclick="fireParallelRequests(200)">🚀 Fire 200 Parallel Requests</button>
+        <button class="btn btn-danger" onclick="clearQueue()">Flush Queue</button>
+      </div>
+    </div>
+
+    <div class="traffic-config">
+      <div class="config-item">
+        <span class="config-label">Min ms</span>
+        <input type="number" id="cfg-min" class="config-input" value="150" min="50" max="2000" step="50">
+      </div>
+      <div class="config-item">
+        <span class="config-label">Max ms</span>
+        <input type="number" id="cfg-max" class="config-input" value="2000" min="100" max="5000" step="100">
+      </div>
+      <div class="config-item">
+        <span class="config-label">Requests</span>
+        <input type="number" id="cfg-count" class="config-input" value="50" style="width: 75px;">
+      </div>
+      <button class="btn btn-flood" onclick="fireCustomParallel()" style="padding: 6px 12px; margin-top: 14px;">Fire Requests</button>
+
+      <div style="border-left: 1px solid #2a3756; height: 32px; margin: 0 4px;"></div>
+
+      <label class="toggle-wrap" title="Continuously injects random background traffic">
+        <input type="checkbox" id="cfg-continuous" class="toggle-checkbox" onchange="toggleContinuous(this.checked)">
+        <span style="font-size: 12px; font-weight: 600;">Continuous Traffic</span>
+      </label>
+    </div>
+  </div>
+
+  <!-- SPLIT DASHBOARD LAYOUT: WORKER UPTIME GRAPH LEFT HALF + LOG STREAM RIGHT SIDE -->
+  <main class="dashboard-split">
+    <!-- LEFT HALF: WORKER UPTIME GRAPH & CORES GRID -->
+    <div class="left-section">
+      <div class="grid-header">
+        <div class="grid-title">
+          <span style="color: var(--neon-cyan);">⚡</span>
+          11 LOGICAL PROCESSORS (Core #00 Async Manager + Cores #01–#10 Sync Workers)
+        </div>
+        <div style="font-size: 12px; color: var(--text-dim);">
+          Manager is 100% asynchronous. Workers execute pure synchronous blocking loops.
+        </div>
+      </div>
+
+      <div class="thread-grid" id="thread-grid">
+        <!-- 11 Core boxes (Core 0 + Cores 1-10) rendered by JS -->
+      </div>
+    </div>
+
+    <!-- RIGHT SIDE: VERTICAL LOG STREAM -->
+    <div class="right-section">
+      <div class="logs-panel">
+        <div class="logs-header">
+          <span>ORCHESTRATION EVENT STREAM</span>
+          <span id="stream-status" style="color: var(--neon-green);">● Streaming via SSE</span>
+        </div>
+        <div class="log-stream" id="log-stream">
+          <div class="log-line">
+            <span class="log-time">[00:00:00.000]</span>
+            <span class="log-scale-down">Manager initialized. System idling at 0 active instances.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const MAX_WORKERS = 10;
+    const gridContainer = document.getElementById('thread-grid');
+    const logStream = document.getElementById('log-stream');
+    
+    // Core state objects: cores[0] = Manager, cores[1..10] = Workers
+    const cores = [];
+
+    // 1. Initialize Core #00: Asynchronous Manager Core
+    const mgrBox = document.createElement('div');
+    mgrBox.className = 'core-box active';
+    mgrBox.id = 'core-box-0';
+    mgrBox.style.borderColor = 'rgba(0, 216, 255, 0.4)';
+    mgrBox.style.background = '#091322';
+    mgrBox.innerHTML = `
+      <div class="core-header">
+        <div class="core-name" style="color: var(--neon-cyan);">
+          <span>Core #00 (Manager)</span>
+        </div>
+        <div class="core-pid" id="core-pid-0" style="color: var(--neon-cyan); font-weight: bold;">ASYNC LOOP</div>
+      </div>
+      <div class="graph-wrap">
+        <canvas class="core-canvas" id="canvas-0" width="180" height="90"></canvas>
+      </div>
+      <div class="core-footer">
+        <div class="task-meta">
+          <span id="core-status-0" style="color: var(--neon-cyan);">Async (Non-Blocking)</span>
+          <span class="highlight" id="core-duration-0" style="color: var(--neon-cyan);">0ms lock</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="core-prog-0" style="width: 100%; background: var(--neon-cyan);"></div>
+        </div>
+      </div>
+    `;
+    gridContainer.appendChild(mgrBox);
+
+    const mgrCanvas = mgrBox.querySelector('#canvas-0');
+    cores.push({
+      slot: 0,
+      isManager: true,
+      box: mgrBox,
+      canvas: mgrCanvas,
+      ctx: mgrCanvas.getContext('2d'),
+      active: true,
+      pid: null,
+      statusText: 'Async (Non-Blocking)',
+      duration: 0,
+      startedAt: 0,
+      progress: 0,
+      history: new Array(50).fill(30),
+      targetVal: 30
+    });
+
+    // 2. Initialize 10 Synchronous Worker Cores (Cores #01 - #10)
+    for (let i = 1; i <= MAX_WORKERS; i++) {
+      const box = document.createElement('div');
+      box.className = 'core-box offline';
+      box.id = `core-box-${i}`;
+      box.innerHTML = `
+        <div class="core-header">
+          <div class="core-name">
+            <span>Core #${i < 10 ? '0' + i : i} (Worker)</span>
+          </div>
+          <div class="core-pid" id="core-pid-${i}">OFFLINE</div>
+        </div>
+        <div class="graph-wrap">
+          <canvas class="core-canvas" id="canvas-${i}" width="180" height="90"></canvas>
+        </div>
+        <div class="core-footer">
+          <div class="task-meta">
+            <span id="core-status-${i}">Dormant (Scaled to 0)</span>
+            <span class="highlight" id="core-duration-${i}">--</span>
+          </div>
+          <div class="progress-track">
+            <div class="progress-fill" id="core-prog-${i}"></div>
+          </div>
+        </div>
+      `;
+      gridContainer.appendChild(box);
+
+      const canvas = box.querySelector(`#canvas-${i}`);
+      const ctx = canvas.getContext('2d');
+
+      cores.push({
+        slot: i,
+        isManager: false,
+        box,
+        canvas,
+        ctx,
+        active: false,
+        pid: null,
+        statusText: 'Dormant (Scaled to 0)',
+        duration: 0,
+        startedAt: 0,
+        progress: 0,
+        history: new Array(50).fill(0),
+        targetVal: 0
+      });
+    }
+
+    // High frequency canvas renderer (60fps)
+    function renderGraphs() {
+      for (const core of cores) {
+        const { ctx, canvas, history, active, startedAt, duration, isManager } = core;
+        const w = canvas.width;
+        const h = canvas.height;
+
+        // Shift waveform history
+        history.shift();
+        if (isManager) {
+          // Asynchronous Manager Core: fluctuating between 20-55% representing fast I/O
+          const val = 25 + Math.random() * 30;
+          history.push(val);
+        } else if (active) {
+          // Synchronous Worker: 95-100% CPU lock when frozen
+          const val = 95 + Math.random() * 5;
+          history.push(val);
+        } else {
+          // Decay down to 0
+          const last = history[history.length - 1] || 0;
+          history.push(Math.max(0, last * 0.7));
+        }
+
+        // Clear canvas
+        ctx.fillStyle = isManager ? '#060f1b' : (active ? '#040d06' : '#060a12');
+        ctx.fillRect(0, 0, w, h);
+
+        // Draw Grid Lines
+        ctx.strokeStyle = isManager ? 'rgba(0, 216, 255, 0.15)' : (active ? 'rgba(0, 255, 102, 0.15)' : 'rgba(30, 41, 59, 0.4)');
+        ctx.lineWidth = 1;
+
+        const stepY = h / 4;
+        for (let y = stepY; y < h; y += stepY) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(w, y);
+          ctx.stroke();
+        }
+
+        const stepX = w / 6;
+        for (let x = stepX; x < w; x += stepX) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, h);
+          ctx.stroke();
+        }
+
+        // Draw Utilization Waveform
+        ctx.beginPath();
+        const step = w / (history.length - 1);
+        for (let idx = 0; idx < history.length; idx++) {
+          const val = history[idx];
+          const px = idx * step;
+          const py = h - (val / 100) * (h - 6) - 3;
+          if (idx === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+
+        // Stroke line
+        ctx.strokeStyle = isManager ? '#00d8ff' : (active ? '#00ff66' : '#334155');
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Fill under line
+        ctx.lineTo(w, h);
+        ctx.lineTo(0, h);
+        ctx.closePath();
+        const grad = ctx.createLinearGradient(0, 0, 0, h);
+        if (isManager) {
+          grad.addColorStop(0, 'rgba(0, 216, 255, 0.35)');
+          grad.addColorStop(1, 'rgba(0, 216, 255, 0.02)');
+        } else if (active) {
+          grad.addColorStop(0, 'rgba(0, 255, 102, 0.4)');
+          grad.addColorStop(1, 'rgba(0, 255, 102, 0.02)');
+        } else {
+          grad.addColorStop(0, 'rgba(30, 41, 59, 0.2)');
+          grad.addColorStop(1, 'rgba(30, 41, 59, 0)');
+        }
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // Calculate and update synchronous freeze progress bar (workers only)
+        if (!isManager && active && startedAt > 0 && duration > 0) {
+          const elapsed = Date.now() - startedAt;
+          const pct = Math.min(100, Math.max(0, (elapsed / duration) * 100));
+          const progEl = document.getElementById(`core-prog-${core.slot}`);
+          if (progEl) progEl.style.width = `${pct}%`;
+        }
+      }
+
+      requestAnimationFrame(renderGraphs);
+    }
+    requestAnimationFrame(renderGraphs);
+
+    // Apply snapshot received from Manager
+    function updateDashboard(data) {
+      // Telemetry
+      document.getElementById('metric-lag').innerText = (data.lag || 0).toLocaleString();
+      document.getElementById('metric-active').innerText = `${data.activeWorkers || 0} / ${MAX_WORKERS}`;
+      const capPct = Math.round(((data.activeWorkers || 0) / MAX_WORKERS) * 100);
+      document.getElementById('metric-capacity').innerText = `${capPct}% capacity utilized`;
+      document.getElementById('metric-processed').innerText = (data.totalProcessed || 0).toLocaleString();
+      document.getElementById('metric-throughput').innerHTML = `${(data.throughput || 0).toFixed(1)} <span style="font-size: 13px; color: var(--text-dim);">jobs/s</span>`;
+      document.getElementById('metric-duration').innerHTML = `${(data.avgDuration || 3000).toLocaleString()} <span style="font-size: 13px; color: var(--text-dim);">ms</span>`;
+
+      // Scale status badge
+      const scaleBadge = document.getElementById('scale-badge');
+      const scaleText = document.getElementById('scale-text');
+      if (data.activeWorkers === 0) {
+        scaleText.innerText = '0 / 10 ACTIVE (SCALED TO 0 - IDLE)';
+        scaleBadge.style.color = '#8ba2c4';
+        scaleBadge.style.borderColor = 'rgba(139, 162, 196, 0.3)';
+        scaleBadge.style.background = 'rgba(139, 162, 196, 0.08)';
+      } else if (data.activeWorkers >= MAX_WORKERS) {
+        scaleText.innerText = '10 / 10 ACTIVE (MAX CAPACITY REACHED)';
+        scaleBadge.style.color = 'var(--neon-yellow)';
+        scaleBadge.style.borderColor = 'rgba(255, 183, 0, 0.4)';
+        scaleBadge.style.background = 'rgba(255, 183, 0, 0.1)';
+      } else {
+        scaleText.innerText = `${data.activeWorkers} / 10 ACTIVE (SCALING DYNAMICALLY)`;
+        scaleBadge.style.color = 'var(--neon-green)';
+        scaleBadge.style.borderColor = 'rgba(0, 255, 102, 0.4)';
+        scaleBadge.style.background = 'rgba(0, 255, 102, 0.1)';
+      }
+
+      // Update Core #00 (Async Manager Core)
+      const core0Pid = document.getElementById('core-pid-0');
+      const core0Status = document.getElementById('core-status-0');
+      if (core0Pid) core0Pid.innerText = `PID: ${data.managerPid || 'HOST'} (${data.mode || 'Async'})`;
+      if (core0Status) {
+        core0Status.innerText = data.activeWorkers > 0 
+          ? `Dispatching to ${data.activeWorkers} Cores` 
+          : 'Async Loop Active (Idle)';
+      }
+
+      // Update Individual Worker Slots (Cores #01 - #10)
+      const slots = data.slots || [];
+      for (let i = 0; i < MAX_WORKERS; i++) {
+        const slotData = slots[i] || { active: false };
+        const core = cores[i + 1]; // index offset by 1 because cores[0] is Manager
+        const slotNum = i + 1;
+        const box = core.box;
+        const pidEl = document.getElementById(`core-pid-${slotNum}`);
+        const statusEl = document.getElementById(`core-status-${slotNum}`);
+        const durationEl = document.getElementById(`core-duration-${slotNum}`);
+        const progEl = document.getElementById(`core-prog-${slotNum}`);
+
+        if (slotData.active) {
+          box.className = 'core-box active';
+          core.active = true;
+          core.startedAt = slotData.startedAt || Date.now();
+          core.duration = slotData.duration || 1000;
+          pidEl.innerText = `PID: ${slotData.pid || 'FORK'}`;
+          if (slotData.isBusy && slotData.jobId) {
+            statusEl.innerText = `Sync ${slotData.jobId}`;
+            statusEl.style.color = 'var(--neon-green)';
+          } else {
+            statusEl.innerText = 'Idle (Ready for task)';
+            statusEl.style.color = 'var(--neon-yellow)';
+            if (progEl) progEl.style.width = '100%';
+          }
+          durationEl.innerText = slotData.duration ? `${slotData.duration}ms` : '--';
+        } else {
+          box.className = 'core-box offline';
+          core.active = false;
+          core.startedAt = 0;
+          core.duration = 0;
+          pidEl.innerText = 'OFFLINE';
+          statusEl.innerText = 'Dormant (Scaled to 0)';
+          statusEl.style.color = '#64748b';
+          durationEl.innerText = '--';
+          if (progEl) progEl.style.width = '0%';
+        }
+      }
+    }
+
+    // Connect to Server-Sent Events (SSE) for ultra-fast, low-overhead 100ms updates
+    function connectSSE() {
+      const eventSource = new EventSource('/api/stream');
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          updateDashboard(data);
+        } catch (e) {
+          console.error('SSE JSON error:', e);
+        }
+      };
+
+      eventSource.addEventListener('log', (event) => {
+        try {
+          const logData = JSON.parse(event.data);
+          addLogLine(logData);
+        } catch (_) {}
+      });
+
+      eventSource.onerror = () => {
+        document.getElementById('stream-status').innerText = 'Reconnecting...';
+        document.getElementById('stream-status').style.color = 'var(--neon-yellow)';
+        eventSource.close();
+        setTimeout(connectSSE, 1000);
+      };
+
+      eventSource.onopen = () => {
+        document.getElementById('stream-status').innerText = '● Streaming 100ms';
+        document.getElementById('stream-status').style.color = 'var(--neon-green)';
+      };
+    }
+
+    connectSSE();
+
+    function addLogLine(entry) {
+      const div = document.createElement('div');
+      div.className = 'log-line';
+      let tagClass = 'log-commit';
+      if (entry.type === 'scale_up') tagClass = 'log-scale-up';
+      if (entry.type === 'scale_down') tagClass = 'log-scale-down';
+      if (entry.type === 'freeze') tagClass = 'log-freeze';
+      if (entry.type === 'flood') tagClass = 'log-flood';
+
+      div.innerHTML = `
+        <span class="log-time">[${entry.time || new Date().toISOString().substring(11, 23)}]</span>
+        <span class="${tagClass}">${entry.text}</span>
+      `;
+      logStream.appendChild(div);
+      logStream.scrollTop = logStream.scrollHeight;
+    }
+
+    // Fire N distinct, independent HTTP requests concurrently
+    async function fireParallelRequests(count) {
+      const min = parseInt(document.getElementById('cfg-min').value || 150, 10);
+      const max = parseInt(document.getElementById('cfg-max').value || 2000, 10);
+      
+      addLogLine({
+        type: 'flood',
+        text: `FIRING ${count} SEPARATE PARALLEL HTTP CALLS: Each request has its own distinct timer (?t=...) between ${min}ms and ${max}ms...`
+      });
+
+      // Fire N distinct, independent HTTP requests simultaneously in parallel!
+      const requests = [];
+      for (let i = 0; i < count; i++) {
+        const timer = Math.floor(Math.random() * (max - min + 1)) + min;
+        requests.push(
+          fetch(`/enqueue?t=${timer}`, { method: 'POST' })
+        );
+      }
+
+      await Promise.all(requests);
+    }
+
+    async function fireCustomParallel() {
+      const count = parseInt(document.getElementById('cfg-count').value || 50, 10);
+      fireParallelRequests(count);
+    }
+
+    async function clearQueue() {
+      await fetch('/api/clear', { method: 'POST' });
+      addLogLine({
+        type: 'scale_down',
+        text: 'Queue cleared manually by operator. Remaining workers will scale to 0.'
+      });
+    }
+
+    // Continuous Traffic Generator (Distinct individual HTTP requests)
+    let continuousInterval = null;
+    function toggleContinuous(enabled) {
+      if (enabled) {
+        addLogLine({ type: 'scale_up', text: 'Started continuous random background traffic simulator.' });
+        continuousInterval = setInterval(() => {
+          const randCount = Math.floor(Math.random() * 4) + 1;
+          const min = parseInt(document.getElementById('cfg-min').value || 150, 10);
+          const max = parseInt(document.getElementById('cfg-max').value || 2000, 10);
+          for (let i = 0; i < randCount; i++) {
+            const timer = Math.floor(Math.random() * (max - min + 1)) + min;
+            fetch(`/enqueue?t=${timer}`, { method: 'POST' });
+          }
+        }, 1200);
+      } else {
+        if (continuousInterval) clearInterval(continuousInterval);
+        addLogLine({ type: 'scale_down', text: 'Stopped continuous background traffic simulator.' });
+      }
+    }
+  </script>
+</body>
+</html>

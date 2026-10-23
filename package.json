@@ -1,0 +1,22 @@
+{
+  "name": "rabbitmq-11core-autoscaler",
+  "version": "1.0.0",
+  "description": "11-Core autoscaling Node.js backend using RabbitMQ and IPC/PM2 with 1 async manager + 10 sync worker cores",
+  "type": "module",
+  "main": "manager.js",
+  "scripts": {
+    "start": "node manager.js",
+    "manager": "node manager.js",
+    "manager:pm2": "node manager.js --pm2",
+    "worker": "node worker.js",
+    "trigger": "node test-trigger.js",
+    "trigger:30": "node test-trigger.js 30",
+    "trigger:100": "node test-trigger.js 100",
+    "trigger:1000": "node test-trigger.js 1000"
+  },
+  "dependencies": {
+    "amqplib": "^2.2.0",
+    "kafkajs": "^2.2.4",
+    "pm2": "^7.1.0"
+  }
+}
